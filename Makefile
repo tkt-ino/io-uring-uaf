@@ -3,7 +3,7 @@ OBJS   = main.o
 CC     = gcc
 FLAGS  = -luring
 
-.PHONY: all clean dist-clean
+.PHONY: all clean distclean
 
 all: $(TARGET)
 
@@ -11,7 +11,7 @@ $(TARGET): $(OBJS)
 	$(CC) -o $(TARGET) $^ $(FLAGS)
 
 clean:
-	$(RM) *.o
+	$(RM) $(OBJS)
 
-dist-clean: clean
+distclean: clean
 	$(RM) $(TARGET)
