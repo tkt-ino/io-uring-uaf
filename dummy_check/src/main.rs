@@ -4,7 +4,8 @@ use std::{time, fs::File, io::{Read, Seek, SeekFrom}, mem::size_of};
 use pagemap::maps;
 use libc::{c_void, mmap, munmap, sched_yield, sysconf, _SC_PAGESIZE};
 
-const DUMMY_PAGES: usize = 1500;
+const DUMMY_PAGES: usize = 300;
+const BUSY_LOOP: u64 = 5;
 const PROCESS_NAME: &str = "wpa_supplicant";
 const WPA_SUPPLICANT_PATH: &str = "/home/inoue/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant";
 const CONFIG_PATH: &str = "-c/home/inoue/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant.conf";
@@ -34,7 +35,7 @@ fn main() {
     println!("[+] start busy loop");
     let now = time::Instant::now();
     loop {
-        if now.elapsed().as_secs() > 10 { break; }
+        if now.elapsed().as_secs() > BUSY_LOOP { break; }
     }
     println!("[+] end busy loop");
 
