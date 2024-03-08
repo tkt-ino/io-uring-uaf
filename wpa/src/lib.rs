@@ -15,6 +15,7 @@ pub extern "C" fn get_process_id() -> i32 {
         if !line.contains("grep") {
             let res: Vec<&str> = line.split_whitespace().collect();
             pid = res[1].parse::<i32>().unwrap();
+            break;
         }
     }
     pid
@@ -42,18 +43,15 @@ pub extern "C" fn kill_wpa_supplicant() -> i32 {
 pub extern "C" fn get_heap_start_address(pid: i32) -> u64 {
     let map = maps(pid as u64);
     let mut res = 0;
-    match map {
-        Ok(map) => {
-            for m in map {
-                if m.path() == Some("[heap]") {
-                    res = m.memory_region().start_address();
-                    break;
-                }
+    if let Ok(map) = map {
+        for m in map {
+            if m.path() == Some("[heap]") {
+                res = m.memory_region().start_address();
+                break;
             }
-            res
-        },
-        Err(_) => res,
+        }
     }
+    res
 }
 
 #[no_mangle]
@@ -82,7 +80,7 @@ pub extern "C" fn v2p(pid: i32, virt_addr: *mut c_void) -> u64 {
     let mut buff = [0; 8];
 
     let page_map_path = match pid {
-       0 => format!("/proc/self/pagemap"),
+       0 => "/proc/self/pagemap".to_string(),
        pid => format!("/proc/{}/pagemap", pid),
     };
     let mut file = File::open(page_map_path).unwrap();
