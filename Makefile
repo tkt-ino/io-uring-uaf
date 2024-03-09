@@ -1,7 +1,7 @@
 CC       = gcc
 FLAGS    = -luring
-LIB      = $(shell pwd)/wpa/target/debug/libwpa.a
-RUST_SRC = $(shell pwd)/wpa/src/*.rs
+LIB      = wpa/target/debug/libwpa.a
+RUST_SRC = wpa/src/*.rs
 
 .PHONY: all clean distclean
 
@@ -11,7 +11,7 @@ KeyRecovery: key_recovery.o $(LIB)
 	$(CC) -o $@ $^ $(FLAGS)
 
 DummyCheck: dummy_check.o $(LIB)
-	$(CC) -o $@ $^ $(FLAGS)
+	$(CC) -o $@ $^ 
 
 $(LIB): $(RUST_SRC)
 	cd wpa && cargo build

