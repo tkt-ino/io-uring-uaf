@@ -7,7 +7,6 @@
 
 const int DUMMY_PAGE = 300;
 const int BUSY_LOOP = 5;
-const int PFN_MASK_SIZE = 8;
 
 // psk の heap 領域からのオフセットは 0x5000 の場合が多い
 const int OFFSET = 0x5000;
