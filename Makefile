@@ -1,17 +1,23 @@
-TARGET = uaf
-OBJS   = main.o
-CC     = gcc
-FLAGS  = -luring
+CC       = gcc
+FLAGS    = -luring
+LIB      = wpa/target/debug/libwpa.a
+RUST_SRC = wpa/src/*.rs
 
 .PHONY: all clean distclean
 
-all: $(TARGET)
+all: KeyRecovery DummyCheck
 
-$(TARGET): $(OBJS)
-	$(CC) -o $(TARGET) $^ $(FLAGS)
+KeyRecovery: key_recovery.o $(LIB)
+	$(CC) -o $@ $^ $(FLAGS)
+
+DummyCheck: dummy_check.o $(LIB)
+	$(CC) -o $@ $^ 
+
+$(LIB): $(RUST_SRC)
+	cd wpa && cargo build
 
 clean:
-	$(RM) $(OBJS)
+	$(RM) *.o
 
 distclean: clean
-	$(RM) $(TARGET)
+	$(RM) KeyRecovery DummyCheck

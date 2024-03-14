@@ -1,3 +1,6 @@
 uaf
 *.o
 .vscode
+target
+KeyRecovery
+DummyCheck
