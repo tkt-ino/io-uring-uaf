@@ -69,6 +69,6 @@ void *custom_mmap() {
 typedef struct {
     void *virt_addr;
     uint64_t phys_addr;
-} dummy;
+} address;
 
 #endif // WPA_H

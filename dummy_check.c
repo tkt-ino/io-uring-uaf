@@ -13,7 +13,7 @@ const int OFFSET = 0x5000;
 
 int main() {
     // ダミーページ確保
-    dummy dummy_pages[DUMMY_PAGE];
+    address dummy_pages[DUMMY_PAGE];
     for (int i = 0; i < DUMMY_PAGE; i++) {
         dummy_pages[i].virt_addr = custom_mmap();
         if (dummy_pages[i].virt_addr == MAP_FAILED) continue;
