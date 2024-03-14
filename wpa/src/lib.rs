@@ -1,10 +1,8 @@
 use std::{ffi::c_void, fs::File, io::{Read, Seek, SeekFrom}, mem::size_of, process::{Command, Stdio}, time};
 use pagemap::maps;
 use libc::{sysconf, _SC_PAGESIZE};
-
-const WPA_SUPPLICANT_PATH: &str = "/home/inoue/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant";
-const CONFIG_PATH: &str = "-c/home/inoue/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant.conf";
-const INTERFACE: &str = "-iwlx00c0ca991249";
+mod config;
+use config::{WPA_SUPPLICANT_PATH, CONFIG_PATH, INTERFACE};
 
 #[no_mangle]
 pub extern "C" fn get_process_id() -> i32 {
@@ -83,22 +81,29 @@ pub extern "C" fn v2p(pid: i32, virt_addr: *mut c_void) -> u64 {
        0 => "/proc/self/pagemap".to_string(),
        pid => format!("/proc/{}/pagemap", pid),
     };
-    let mut file = File::open(page_map_path).unwrap();
-    
-    // 仮想アドレスページ番号の分だけカーソルを進める
-    file.seek(SeekFrom::Start(size_of::<u64>() as u64 * virt_pfn)).unwrap();
+    let file = File::open(page_map_path);
+    match file {
+        Ok(mut file) => {
+            match file.seek(SeekFrom::Start(size_of::<u64>() as u64 * virt_pfn)) {
+                Ok(_) => {
+                    match file.read_exact(&mut buff) {
+                        Ok(_) => {
+                            let mut pfn = 0;
+                            for (index, val) in buff.iter().enumerate() {
+                                pfn += (*val as u64) << (index * 8); 
+                            }
 
-    // 8x8=64bit 取得
-    file.read_exact(&mut buff).unwrap();
-
-    // 物理ページ番号を計算
-    let mut pfn = 0;
-    for (index, val) in buff.iter().enumerate() {
-        pfn += (*val as u64) << (index * 8); 
-    }
-
-    match pfn & 0x7fffffffffffff {
-        0 => 0,
-        p => p * page_size + offset, 
+                            match pfn & 0x7fffffffffffff {
+                                0 => 0,
+                                p => p * page_size + offset, 
+                            }
+                        },
+                        Err(_) => 0,
+                    }
+                },
+                Err(_) => 0,
+            }
+        },
+        Err(_) => 0,
     }
 }
