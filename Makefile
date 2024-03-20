@@ -1,7 +1,8 @@
 CC       = gcc
 FLAGS    = -luring
-LIB      = wpa/target/debug/libwpa.a
-RUST_SRC = wpa/src/*.rs
+RUST_DIR = wpa
+LIB      = $(RUST_DIR)/target/debug/libwpa.a
+RUST_SRC = $(RUST_DIR)/src/*.rs
 
 .PHONY: all clean distclean
 
@@ -14,10 +15,11 @@ DummyCheck: dummy_check.o $(LIB)
 	$(CC) -o $@ $^ 
 
 $(LIB): $(RUST_SRC)
-	cd wpa && cargo build
+	cd $(RUST_DIR) && cargo build
 
 clean:
 	$(RM) *.o
 
 distclean: clean
 	$(RM) KeyRecovery DummyCheck
+	cd $(RUST_DIR) && cargo clean

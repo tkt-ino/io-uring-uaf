@@ -21,13 +21,11 @@ int main() {
     }
 
     // wpa_supplicant が起動中なら一度止める
-    int res = 0;
     if (get_process_id()) {
-        res = kill_wpa_supplicant();
-    }
-    if (res) {
-        printf("[-] failed to kill wpa_supplicant\n");
-        exit(1);
+        if (kill_wpa_supplicant()) {
+            printf("[-] failed to kill wpa_supplicant\n");
+            exit(1);
+        }
     }
 
     // 他のプロセスに CPU を譲る

