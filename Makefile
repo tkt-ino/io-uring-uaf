@@ -14,6 +14,9 @@ KeyRecovery: key_recovery.o $(LIB)
 DummyCheck: dummy_check.o $(LIB)
 	$(CC) -o $@ $^ 
 
+DirtyCred: dirty_cred.o
+	$(CC) -o $@ $^ $(FLAGS)
+
 $(LIB): $(RUST_SRC)
 	cd $(RUST_DIR) && cargo build
 
@@ -21,5 +24,5 @@ clean:
 	$(RM) *.o
 
 distclean: clean
-	$(RM) KeyRecovery DummyCheck
+	$(RM) KeyRecovery DummyCheck DirtyCred
 	cd $(RUST_DIR) && cargo clean
