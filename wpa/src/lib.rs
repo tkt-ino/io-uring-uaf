@@ -6,10 +6,24 @@ use config::{WPA_SUPPLICANT_PATH, CONFIG_PATH, INTERFACE};
 
 #[no_mangle]
 pub extern "C" fn get_process_id() -> i32 {
-    let ps = Command::new("ps").arg("aux").stdout(Stdio::piped()).spawn().expect("ps failed");
-    let grep = Command::new("grep").arg("wpa_supplicant").stdin(ps.stdout.unwrap()).output().expect("grep failed");
     let mut pid = 0;
-    for line in String::from_utf8(grep.stdout).unwrap().lines() {
+    let ps = match Command::new("ps").arg("aux").stdout(Stdio::piped()).spawn() {
+        Ok(ps) => ps,
+        Err(_) => return pid,
+    };
+    let ps_stdout = match ps.stdout {
+        Some(stdout) => stdout,
+        None => return pid,
+    };
+    let grep = match Command::new("grep").arg("wpa_supplicant").stdin(ps_stdout).output() {
+        Ok(output) => output,
+        Err(_) => return pid,
+    };
+    let lines = match String::from_utf8(grep.stdout) {
+        Ok(lines) => lines,
+        Err(_) => return pid,
+    };
+    for line in lines.lines() {
         if !line.contains("grep") {
             let res: Vec<&str> = line.split_whitespace().collect();
             pid = res[1].parse::<i32>().unwrap();
@@ -21,32 +35,37 @@ pub extern "C" fn get_process_id() -> i32 {
 
 #[no_mangle]
 pub extern "C" fn start_wpa_supplicant() -> i32 {
-    let cmd = Command::new(WPA_SUPPLICANT_PATH).arg(INTERFACE).arg(CONFIG_PATH).arg("-B").stdout(Stdio::null()).status().expect("failed to start wpa_supplicant");
-    match cmd.success() {
-        true => 0,
-        false => 1,
+    match Command::new(WPA_SUPPLICANT_PATH).arg(INTERFACE).arg(CONFIG_PATH).arg("-B").stdout(Stdio::null()).status() {
+        Err(_) => 1,
+        Ok(status) => match status.success() {
+            true => 0,
+            false => 1,
+        }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn kill_wpa_supplicant() -> i32 {
-    let cmd = Command::new("killall").arg("wpa_supplicant").stderr(Stdio::null()).status().expect("killall failed");
-    match cmd.success() {
-        true => 0,
-        false => 1,
+    match Command::new("killall").arg("wpa_supplicant").stderr(Stdio::null()).status() {
+        Err(_) => 1,
+        Ok(status) => match status.success() {
+            true => 0,
+            false => 1,
+        }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn get_heap_start_address(pid: i32) -> u64 {
-    let map = maps(pid as u64);
     let mut res = 0;
-    if let Ok(map) = map {
-        for m in map {
-            if m.path() == Some("[heap]") {
-                res = m.memory_region().start_address();
-                break;
-            }
+    let map = match maps(pid as u64) {
+        Ok(map) => map,
+        Err(_) => return res,
+    };
+    for m in map {
+        if m.path() == Some("[heap]") {
+            res = m.memory_region().start_address();
+            break;
         }
     }
     res
@@ -81,29 +100,27 @@ pub extern "C" fn v2p(pid: i32, virt_addr: *mut c_void) -> u64 {
        0 => "/proc/self/pagemap".to_string(),
        pid => format!("/proc/{}/pagemap", pid),
     };
-    let file = File::open(page_map_path);
-    match file {
-        Ok(mut file) => {
-            match file.seek(SeekFrom::Start(size_of::<u64>() as u64 * virt_pfn)) {
-                Ok(_) => {
-                    match file.read_exact(&mut buff) {
-                        Ok(_) => {
-                            let mut pfn = 0;
-                            for (index, val) in buff.iter().enumerate() {
-                                pfn += (*val as u64) << (index * 8); 
-                            }
-
-                            match pfn & 0x7fffffffffffff {
-                                0 => 0,
-                                p => p * page_size + offset, 
-                            }
-                        },
-                        Err(_) => 0,
-                    }
-                },
-                Err(_) => 0,
-            }
-        },
-        Err(_) => 0,
+    let mut file = match File::open(page_map_path) {
+        Ok(file) => file,
+        Err(_) => {
+            println!("[-] failed to open pagemap file");
+            return 0;
+        }
+    };
+    if file.seek(SeekFrom::Start(size_of::<u64>() as u64 * virt_pfn)).is_err() {
+        println!("[-] failed to seek pagemap file");
+        return 0;
+    }
+    if file.read_exact(&mut buff).is_err() {
+        println!("[-] failed to read pagemap file");
+        return 0;
+    }
+    let mut pfn = 0;
+    for (index, val) in buff.iter().enumerate() {
+        pfn += (*val as u64) << (index * size_of::<u64>());
+    }
+    match pfn & 0x7fffffffffffff {
+        0 => 0,
+        p => p * page_size + offset,
     }
 }
