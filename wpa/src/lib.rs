@@ -8,14 +8,13 @@ use config::{WPA_SUPPLICANT_PATH, CONFIG_PATH, INTERFACE};
 pub extern "C" fn get_process_id() -> i32 {
     let mut pid = 0;
     let ps = match Command::new("ps").arg("aux").stdout(Stdio::piped()).spawn() {
-        Ok(ps) => ps,
+        Ok(ps) => match ps.stdout {
+            Some(stdout) => stdout,
+            None => return pid,
+        }
         Err(_) => return pid,
     };
-    let ps_stdout = match ps.stdout {
-        Some(stdout) => stdout,
-        None => return pid,
-    };
-    let grep = match Command::new("grep").arg("wpa_supplicant").stdin(ps_stdout).output() {
+    let grep = match Command::new("grep").arg("wpa_supplicant").stdin(ps).output() {
         Ok(output) => output,
         Err(_) => return pid,
     };
@@ -26,7 +25,7 @@ pub extern "C" fn get_process_id() -> i32 {
     for line in lines.lines() {
         if !line.contains("grep") {
             let res: Vec<&str> = line.split_whitespace().collect();
-            pid = res[1].parse::<i32>().unwrap();
+            pid = res[1].parse::<i32>().unwrap_or(0);
             break;
         }
     }
