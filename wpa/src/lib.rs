@@ -116,10 +116,14 @@ pub extern "C" fn v2p(pid: i32, virt_addr: *mut c_void) -> u64 {
     }
     let mut pfn = 0;
     for (index, val) in buff.iter().enumerate() {
-        pfn += (*val as u64) << (index * size_of::<u64>());
+        pfn += (*val as u64) << (index * size_in_bits::<u8>());
     }
     match pfn & 0x7fffffffffffff {
         0 => 0,
         p => p * page_size + offset,
     }
+}
+
+fn size_in_bits<T>() -> usize {
+    size_of::<T>() * 8
 }
