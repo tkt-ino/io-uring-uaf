@@ -6,7 +6,7 @@ RUST_SRC = $(RUST_DIR)/src/*.rs
 
 .PHONY: all clean distclean
 
-all: KeyRecovery DummyCheck
+all: KeyRecovery DummyCheck DirtyCred
 
 KeyRecovery: key_recovery.o $(LIB)
 	$(CC) -o $@ $^ $(FLAGS)
