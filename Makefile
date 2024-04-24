@@ -1,5 +1,5 @@
 CC       = gcc
-FLAGS    = -luring
+FLAGS    = -luring -lpthread
 RUST_DIR = wpa
 LIB      = $(RUST_DIR)/target/debug/libwpa.a
 RUST_SRC = $(RUST_DIR)/src/*.rs
