@@ -1,15 +1,12 @@
 #define _GNU_SOURCE
 
+#include "utils.h"
 #include <unistd.h>
-#include <err.h>
 #include <string.h>
-#include <stdio.h>
 #include <ctype.h>
 #include <liburing.h>
-#include <stdlib.h>
 #include <sys/capability.h>
 #include <sys/syscall.h>
-#include <sys/mman.h>
 #include <sys/wait.h>
 #include <pthread.h>
 
@@ -26,11 +23,6 @@ struct state {
 struct state state = { false, false, 0 };
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
-void errExit(const char *msg1) {
-    puts(msg1);
-    exit(-1);
-}
 
 pid_t gettid(void) {
     return syscall(SYS_gettid);
@@ -50,7 +42,7 @@ void *setcap_worker(void *param) {
         usleep(1000);
     }
 
-    if (syscall(SYS_capset, &cap_header, (void *)cap_data)) errExit("[-] capset() failed");
+    if (syscall(SYS_capset, &cap_header, (void *)cap_data)) err_exit("[-] capset() failed");
     pthread_mutex_lock(&lock);
     state.setcap_num++;
     pthread_mutex_unlock(&lock);
@@ -79,14 +71,14 @@ void *setcap_worker(void *param) {
 }
 
 void pinning_cpu(int core) {
-  cpu_set_t mask;
+    cpu_set_t mask;
 
-  CPU_ZERO(&mask);
-  CPU_SET(core, &mask);
+    CPU_ZERO(&mask);
+    CPU_SET(core, &mask);
 
-  if (sched_setaffinity(getpid(), sizeof(mask), &mask) < 0) {
-    errExit("[-] pinning_thread failed");
-  }
+    if (sched_setaffinity(getpid(), sizeof(mask), &mask) < 0) {
+      err_exit("[-] pinning_thread failed");
+    }
 }
 
 int main() {
@@ -97,7 +89,7 @@ int main() {
     puts("[+] creating threads...");
     for (i = 0; i < THREAD_NUM; i++) {
         int ret = pthread_create(&thread[i], NULL, setcap_worker, NULL);
-        if (ret) errExit("[-] failed to create thread\n");
+        if (ret) err_exit("[-] failed to create thread\n");
     }
 
     sleep(1);
@@ -118,7 +110,7 @@ int main() {
     // ユーザ空間にマップ
     void *pbuf_map = mmap(NULL, 0x1000, PROT_READ|PROT_WRITE, MAP_SHARED, ring.ring_fd, IORING_OFF_PBUF_RING);
     if (pbuf_map == MAP_FAILED) {
-        errExit("[-] mmap() failed");
+        err_exit("[-] mmap() failed");
     }
     puts("[+] map ring buffer to user space");
 

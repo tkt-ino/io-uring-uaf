@@ -1,23 +1,23 @@
 CC       = gcc
-FLAGS    = -luring -lpthread
+FLAGS    = -l:liburing.a -lpthread 
 RUST_DIR = wpa
-LIB      = $(RUST_DIR)/target/debug/libwpa.a
+RUST_LIB = $(RUST_DIR)/target/debug/libwpa.a
 RUST_SRC = $(RUST_DIR)/src/*.rs
 
 .PHONY: all clean distclean
 
 all: KeyRecovery DummyCheck DirtyCred
 
-KeyRecovery: key_recovery.o $(LIB)
+KeyRecovery: key_recovery.o $(RUST_LIB)
 	$(CC) -o $@ $^ $(FLAGS)
 
-DummyCheck: dummy_check.o $(LIB)
+DummyCheck: dummy_check.o $(RUST_LIB)
 	$(CC) -o $@ $^ 
 
 DirtyCred: dirty_cred.o
 	$(CC) -o $@ $^ $(FLAGS)
 
-$(LIB): $(RUST_SRC)
+$(RUST_LIB): $(RUST_SRC)
 	cd $(RUST_DIR) && cargo build
 
 clean:

@@ -48,27 +48,4 @@ void busy_loop(int time);
 */
 uint64_t v2p(int pid, void *virt_addr);
 
-/**
- * 内部的に`mmap`を呼ぶ
-*/
-void *custom_mmap() {
-    void *addr = mmap(
-        NULL,
-        0x1000,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE,
-        -1,
-        0
-    );
-    return addr;
-}
-
-/**
- * 仮想アドレスと対応する物理アドレスの構造体
-*/
-typedef struct {
-    void *virt_addr;
-    uint64_t phys_addr;
-} address;
-
 #endif // WPA_H

